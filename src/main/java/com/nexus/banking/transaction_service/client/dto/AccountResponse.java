@@ -10,6 +10,8 @@ import java.math.BigDecimal;
 public record AccountResponse(
         Long id,
         String accountNumber,
+        String accountType,
         BigDecimal balance,
+        BigDecimal availableBalance,
         String userId
 ) {}

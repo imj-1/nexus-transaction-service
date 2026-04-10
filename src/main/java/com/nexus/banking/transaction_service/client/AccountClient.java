@@ -1,11 +1,13 @@
 package com.nexus.banking.transaction_service.client;
 
+import com.nexus.banking.transaction_service.client.dto.AccountBalanceResponse;
 import com.nexus.banking.transaction_service.client.dto.AccountResponse;
 import com.nexus.banking.transaction_service.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -32,39 +34,39 @@ public class AccountClient {
                                        response -> Mono.error(new ResourceNotFoundException(
                                                "Account not found with id: " + accountId))
                                         )
-                               .onStatus(HttpStatusCode::is4xxClientError, response -> response.createException())
-                               .onStatus(HttpStatusCode::is5xxServerError, response -> response.createException())
+                               .onStatus(HttpStatusCode::is4xxClientError, ClientResponse::createException)
+                               .onStatus(HttpStatusCode::is5xxServerError, ClientResponse::createException)
                                .bodyToMono(AccountResponse.class)
                                .block();
     }
 
     /**
-     * PATCH /internal/v1/accounts/{id}/debit — new internal endpoint.
-     * See REQUIRED_CHANGES.md for the account-service implementation.
+     * Returns the new balance after debit so we can snapshot it on the transaction.
      */
-    public void debitAccount(Long accountId, BigDecimal amount) {
+    public BigDecimal debitAccount(Long accountId, BigDecimal amount) {
         log.debug("Debiting account id={}, amount={}", accountId, amount);
-        accountWebClient.patch()
-                        .uri("/internal/v1/accounts/{id}/debit", accountId)
-                        .bodyValue(Map.of("amount", amount))
-                        .retrieve()
-                        .onStatus(HttpStatusCode::isError, response -> response.createException())
-                        .bodyToMono(Void.class)
-                        .block();
+        return accountWebClient.patch()
+                               .uri("/internal/v1/accounts/{id}/debit", accountId)
+                               .bodyValue(Map.of("amount", amount))
+                               .retrieve()
+                               .onStatus(HttpStatusCode::isError, response -> response.createException())
+                               .bodyToMono(AccountBalanceResponse.class)
+                               .map(AccountBalanceResponse::newBalance)
+                               .block();
     }
 
     /**
-     * PATCH /internal/v1/accounts/{id}/credit — new internal endpoint.
-     * See REQUIRED_CHANGES.md for the account-service implementation.
+     * Returns the new balance after credit so we can snapshot it on the transaction.
      */
-    public void creditAccount(Long accountId, BigDecimal amount) {
+    public BigDecimal creditAccount(Long accountId, BigDecimal amount) {
         log.debug("Crediting account id={}, amount={}", accountId, amount);
-        accountWebClient.patch()
-                        .uri("/internal/v1/accounts/{id}/credit", accountId)
-                        .bodyValue(Map.of("amount", amount))
-                        .retrieve()
-                        .onStatus(HttpStatusCode::isError, response -> response.createException())
-                        .bodyToMono(Void.class)
-                        .block();
+        return accountWebClient.patch()
+                               .uri("/internal/v1/accounts/{id}/credit", accountId)
+                               .bodyValue(Map.of("amount", amount))
+                               .retrieve()
+                               .onStatus(HttpStatusCode::isError, response -> response.createException())
+                               .bodyToMono(AccountBalanceResponse.class)
+                               .map(AccountBalanceResponse::newBalance)
+                               .block();
     }
 }
