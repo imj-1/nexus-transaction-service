@@ -13,6 +13,7 @@ import com.nexus.banking.transaction_service.common.repository.TransactionReposi
 import com.nexus.banking.transaction_service.v1.dto.request.DepositRequest;
 import com.nexus.banking.transaction_service.v1.dto.request.TransferRequest;
 import com.nexus.banking.transaction_service.v1.dto.request.WithdrawalRequest;
+import com.nexus.banking.transaction_service.v1.dto.response.AccountMonthlySummaryDTO;
 import com.nexus.banking.transaction_service.v1.dto.response.TransactionDTO;
 import com.nexus.banking.transaction_service.v1.mapper.TransactionMapper;
 import lombok.RequiredArgsConstructor;
@@ -25,16 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
 
-/**
- * Core transaction orchestration.
- * <p>
- * DISTRIBUTED CONSISTENCY NOTE
- * Balance updates are synchronous REST calls to account-service.
- * If debit succeeds but credit fails, the transaction is marked FAILED
- * and the debit is NOT automatically reversed. For production-grade
- * guarantees, implement the Saga pattern with compensating transactions.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -55,7 +49,6 @@ public class TransactionServiceImpl implements TransactionService {
 
         AccountResponse from = accountClient.getAccountById(request.fromAccountId());
         AccountResponse to = accountClient.getAccountById(request.toAccountId());
-
         validateSufficientFunds(from, request.amount());
 
         Transaction txn = transactionRepository.save(Transaction.builder()
@@ -70,8 +63,10 @@ public class TransactionServiceImpl implements TransactionService {
                                                                 .build());
 
         try {
-            accountClient.debitAccount(from.id(), request.amount());
-            accountClient.creditAccount(to.id(), request.amount());
+            BigDecimal fromBalance = accountClient.debitAccount(from.id(), request.amount());
+            BigDecimal toBalance = accountClient.creditAccount(to.id(), request.amount());
+            txn.setFromBalanceAfter(fromBalance);
+            txn.setToBalanceAfter(toBalance);
             txn.setStatus(TransactionStatus.COMPLETED);
             log.info(
                     "Transfer COMPLETED ref={} from={} to={} amount={}",
@@ -107,7 +102,8 @@ public class TransactionServiceImpl implements TransactionService {
                                                                 .build());
 
         try {
-            accountClient.creditAccount(to.id(), request.amount());
+            BigDecimal toBalance = accountClient.creditAccount(to.id(), request.amount());
+            txn.setToBalanceAfter(toBalance);
             txn.setStatus(TransactionStatus.COMPLETED);
             log.info(
                     "Deposit COMPLETED ref={} to={} amount={}",
@@ -143,7 +139,8 @@ public class TransactionServiceImpl implements TransactionService {
                                                                 .build());
 
         try {
-            accountClient.debitAccount(from.id(), request.amount());
+            BigDecimal fromBalance = accountClient.debitAccount(from.id(), request.amount());
+            txn.setFromBalanceAfter(fromBalance);
             txn.setStatus(TransactionStatus.COMPLETED);
             log.info(
                     "Withdrawal COMPLETED ref={} from={} amount={}",
@@ -183,7 +180,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public Page<TransactionDTO> getTransactionsByAccountId(Long accountId, Pageable pageable) {
         return transactionRepository.findByAccountId(accountId, pageable)
-                                    .map(transactionMapper::toDto);
+                                    .map(t -> transactionMapper.toDtoWithPerspective(t, accountId));
     }
 
     @Override
@@ -192,13 +189,36 @@ public class TransactionServiceImpl implements TransactionService {
                                     .map(transactionMapper::toDto);
     }
 
+    /**
+     * Returns deposit and withdrawal totals for the current calendar month.
+     */
+    @Override
+    public AccountMonthlySummaryDTO getMonthlySummary(Long accountId) {
+        YearMonth current = YearMonth.now();
+        LocalDateTime start = current.atDay(1)
+                                     .atStartOfDay();
+        LocalDateTime end = current.atEndOfMonth()
+                                   .atTime(23, 59, 59);
+
+        BigDecimal deposits = transactionRepository.sumCreditsByAccountId(accountId, start, end);
+        BigDecimal withdrawals = transactionRepository.sumDebitsByAccountId(accountId, start, end);
+
+        return new AccountMonthlySummaryDTO(
+                current.toString(),
+                deposits != null ? deposits : BigDecimal.ZERO,
+                withdrawals != null ? withdrawals : BigDecimal.ZERO
+        );
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
     private void validateSufficientFunds(AccountResponse account, BigDecimal amount) {
-        if (account.balance()
+        if (account.availableBalance()
                    .compareTo(amount) < 0) {
             throw new InsufficientFundsException(String.format(
                     "Insufficient funds in account %s. Available: %s, Required: %s",
                     account.accountNumber(),
-                    account.balance(),
+                    account.availableBalance(),
                     amount
                                                               ));
         }

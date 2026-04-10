@@ -18,5 +18,6 @@ public record TransactionDTO(
         String description,
         String failureReason,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        BigDecimal balanceAfter
 ) {}

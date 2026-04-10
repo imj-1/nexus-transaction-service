@@ -3,6 +3,7 @@ package com.nexus.banking.transaction_service.common.service;
 import com.nexus.banking.transaction_service.v1.dto.request.DepositRequest;
 import com.nexus.banking.transaction_service.v1.dto.request.TransferRequest;
 import com.nexus.banking.transaction_service.v1.dto.request.WithdrawalRequest;
+import com.nexus.banking.transaction_service.v1.dto.response.AccountMonthlySummaryDTO;
 import com.nexus.banking.transaction_service.v1.dto.response.TransactionDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,4 +23,6 @@ public interface TransactionService {
     Page<TransactionDTO> getTransactionsByAccountId(Long accountId, Pageable pageable);
 
     Page<TransactionDTO> getTransactionsByUserId(String userId, Pageable pageable);
+
+    AccountMonthlySummaryDTO getMonthlySummary(Long accountId);
 }
