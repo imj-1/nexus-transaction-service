@@ -86,4 +86,16 @@ public class Transaction {
     @UpdateTimestamp
     @Column(nullable = false)
     private LocalDateTime updatedAt;
+
+    /**
+     * Balance of the source account after this transaction settled. Null for DEPOSIT.
+     */
+    @Column(precision = 19, scale = 4)
+    private BigDecimal fromBalanceAfter;
+
+    /**
+     * Balance of the destination account after this transaction settled. Null for WITHDRAWAL.
+     */
+    @Column(precision = 19, scale = 4)
+    private BigDecimal toBalanceAfter;
 }
