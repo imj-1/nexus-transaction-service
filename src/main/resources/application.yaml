@@ -1,3 +1,6 @@
+server:
+  port: ${SERVER_PORT:8083}
+
 spring:
   application:
     name: transaction-service
@@ -15,7 +18,7 @@ spring:
 
   docker:
     compose:
-      enabled: true
+      enabled: false
       file: compose.yaml
 
   jpa:
@@ -49,9 +52,6 @@ spring:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/nexus}
 
-server:
-  port: ${SERVER_PORT:8083}
-
 eureka:
   client:
     service-url:
@@ -66,10 +66,23 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health, info, metrics, prometheus
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+    prometheus:
+      access: unrestricted
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  health:
+    liveness-state:
+      enabled: true
+    readiness-state:
+      enabled: true
 
 logging:
   level:
